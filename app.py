@@ -6,13 +6,16 @@ from torchvision import models
 import sqlite3
 import hashlib
 
-# Initialize session state for navigation
+# Initialize session state for navigation and user role
 if "current_page" not in st.session_state:
-    st.session_state["current_page"] = "login"  # Default page is the login page
+    st.session_state["current_page"] = "login"
+if "user_role" not in st.session_state:
+    st.session_state["user_role"] = None  # "admin" or "user"
 
 # Navigation function to switch pages
-def navigate_to(page_name):
+def navigate_to(page_name, role=None):
     st.session_state["current_page"] = page_name
+    st.session_state["user_role"] = role
 
 # Hashing function for passwords
 def hash_password(password):
@@ -27,24 +30,39 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
-            hashed_password TEXT NOT NULL
+            hashed_password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT "user" -- New column for user roles
         )
     ''')
+    conn.commit()
+
+    #Admin entry
+    try:
+        admin_username = "HELLFATHER4622"
+        admin_password = "4622"
+        c.execute("SELECT * FROM users WHERE username = ? AND role = 'admin'", (admin_username,))
+        if c.fetchone() is None:  # Admin does not exist, so create one
+            c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)", 
+                      (admin_username, hash_password(admin_password), "admin"))
+            print("Admin user added successfully.")
+    except Exception as e:
+        print(f"Error adding admin user: {e}")
+
     conn.commit()
     conn.close()
 
 # Database Helper Functions
-def register_user(username, password):
+def register_user(username, password, role="user"):
     """Register a new user in the database."""
     try:
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
-        c.execute("INSERT INTO users (username, hashed_password) VALUES (?, ?)", 
-                  (username, hash_password(password)))
+        c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)", 
+                  (username, hash_password(password), role))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
-        return False  # Username already exists
+        return False  
     finally:
         conn.close()
 
@@ -53,9 +71,11 @@ def authenticate_user(username, password):
     try:
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
-        c.execute("SELECT hashed_password FROM users WHERE username = ?", (username,))
+        c.execute("SELECT hashed_password, role FROM users WHERE username = ?", (username,))
         result = c.fetchone()
-        return result and result[0] == hash_password(password)
+        if result and result[0] == hash_password(password):
+            return result[1]  # Return the user's role
+        return None
     finally:
         conn.close()
 
@@ -64,8 +84,8 @@ def authenticate_user(username, password):
 def load_model():
     """Loads the trained ResNet18 model."""
     try:
-        model = models.resnet18(pretrained=False)  # Initialize model
-        model.fc = torch.nn.Linear(model.fc.in_features, 4)  # Modify for 4 classes
+        model = models.resnet18(pretrained=False)  
+        model.fc = torch.nn.Linear(model.fc.in_features, 4) 
         
         # Load state_dict with key adjustments
         state_dict = torch.load("alzheimers_cnn_model.pth", map_location=torch.device('cpu'))
@@ -73,7 +93,7 @@ def load_model():
         
         # Load into model
         model.load_state_dict(state_dict)
-        model.eval()  # Set to evaluation mode
+        model.eval() 
         return model
     except FileNotFoundError:
         st.error("Model file not found. Please ensure 'alzheimers_cnn_model.pth' is in the correct location.")
@@ -90,9 +110,9 @@ def predict(image, model):
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
         ])
-        image = transform(image).unsqueeze(0)  # Add batch dimension
+        image = transform(image).unsqueeze(0)  
         outputs = model(image)
-        _, predicted_class = torch.max(outputs, 1)  # Get the predicted class
+        _, predicted_class = torch.max(outputs, 1)  
         class_labels = [
             "AD (Alzheimer's Disease)",
             "CN (Cognitively Normal)",
@@ -116,9 +136,10 @@ def login_page():
         submitted = st.form_submit_button("Login")
 
         if submitted:
-            if authenticate_user(username, password):
+            role = authenticate_user(username, password)
+            if role:
                 st.success("Login successful!")
-                navigate_to("classification")  # Navigate to the classification page
+                navigate_to("classification" if role == "user" else "admin", role)
             else:
                 st.error("Invalid username or password.")
     
@@ -152,7 +173,7 @@ def registration_page():
     if st.button("Back to Login"):
         navigate_to("login")
 
-# Classification Page
+# Classification Page (For Regular Users)
 def classification_page():
     st.title("Alzheimer's Disease Classification")
     st.write("Upload an image to predict the category of Alzheimer's Disease.")
@@ -180,13 +201,42 @@ def classification_page():
     if st.button("Logout"):
         navigate_to("login")
 
+# Admin Page (For Admin Users)
+def admin_page():
+    st.title("Admin Panel")
+    st.write("Welcome to the Admin Panel. View and manage user information.")
+
+    try:
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("SELECT id, username, hashed_password, role FROM users")
+        users = c.fetchall()
+
+        # Display user data in a table
+        import pandas as pd
+        df = pd.DataFrame(users, columns=["ID", "Username", "Hashed Password", "Role"])
+        st.dataframe(df)
+    except Exception as e:
+        st.error(f"Error fetching data: {e}")
+    finally:
+        conn.close()
+
+    # Logout button
+    if st.button("Logout"):
+        navigate_to("login")
+
+
 # Page Router
 if st.session_state["current_page"] == "login":
     login_page()
 elif st.session_state["current_page"] == "register":
     registration_page()
-elif st.session_state["current_page"] == "classification":
+elif st.session_state["current_page"] == "classification" and st.session_state["user_role"] == "user":
     classification_page()
+elif st.session_state["current_page"] == "admin" and st.session_state["user_role"] == "admin":
+    admin_page()
+else:
+    st.error("Access Denied!")
 
 # Initialize the database
 init_db()
