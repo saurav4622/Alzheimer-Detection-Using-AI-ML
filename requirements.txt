@@ -5,7 +5,6 @@ keras
 matplotlib
 torch
 torchvision
-sqlite
 streamlit
 scikit-learn
 xgboost
