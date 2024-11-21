@@ -3,4 +3,4 @@ pandas
 tensorflow
 keras
 matplotlib
-pytorch
+torch
