@@ -1,6 +1,3 @@
-Here’s a comprehensive version of your README file, incorporating all the changes you've made:
-
----
 
 # Alzheimer's Disease Detection Using AI & ML
 
@@ -81,13 +78,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ![MRI Example](path/to/mri_example_image.png)
 
 ---
-
-This version includes:
-- The **Kaggle dataset link** with download instructions.
-- **Directory structure** for the dataset.
-- **Model training steps**.
-- **Performance results** (Accuracy, Precision, Recall).
-- **Licensing information** (MIT).
-- Placeholder sections for **images** (model architecture and example MRI scans).
-
-Make sure to update the image paths and any other missing details. Let me know if you'd like any more adjustments!
