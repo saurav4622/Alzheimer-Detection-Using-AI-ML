@@ -4,3 +4,5 @@ tensorflow
 keras
 matplotlib
 torch
+torchvision
+sqlite
