@@ -54,7 +54,7 @@ dataset/
     ```
 3. **Run the model**:
     ```bash
-    python model_training.py
+    streamlit run app.py
     ```
 
 ## Results 📊
@@ -65,16 +65,9 @@ dataset/
 | Recall    | 94%   |
 
 ## Contributors 👨‍💻
-- **Saurabh** - Lead Developer
+- **Sourabh** - Lead Developer
 
 ## License 📜
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Example Visualizations 📸
-- **Model Architecture**:  
-![Model Architecture](path/to/architecture_image.png)
-
-- **Example MRI Scans**:  
-![MRI Example](path/to/mri_example_image.png)
 
 ---
