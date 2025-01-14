@@ -1,9 +1,12 @@
-import streamlit as st
+# `import streamlit as st` is importing the Streamlit library and aliasing it as `st`. 
+import streamlit as st 
 import torch
-import torchvision.transforms as transforms
+import torchvision.transforms as transforms # type: ignore
 from PIL import Image
 from torchvision import models
 import sqlite3
+
+# `import hashlib` is importing the hashlib module in Python. 
 import hashlib
 
 # Initialize session state for navigation and user role
@@ -17,6 +20,7 @@ def navigate_to(page_name, role=None):
     st.session_state["current_page"] = page_name
     st.session_state["user_role"] = role
 
+# The `# Hashing function for passwords` section in the code defines a function named `hash_password(password)` that is responsible for securely hashing passwords using the SHA256 algorithm.
 # Hashing function for passwords
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -41,7 +45,7 @@ def init_db():
         admin_username = "HELLFATHER4622"
         admin_password = "4622"
         c.execute("SELECT * FROM users WHERE username = ? AND role = 'admin'", (admin_username,))
-        if c.fetchone() is None:  # Admin does not exist, so create one
+        if c.fetchone() is None:  
             c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)", 
                       (admin_username, hash_password(admin_password), "admin"))
             print("Admin user added successfully.")
@@ -84,7 +88,7 @@ def authenticate_user(username, password):
 def load_model():
     """Loads the trained ResNet18 model."""
     try:
-        model = models.resnet18(pretrained=False)  
+        model = models.resnet18(pretrained=True)  
         model.fc = torch.nn.Linear(model.fc.in_features, 4) 
         
         # Load state_dict with key adjustments
@@ -106,10 +110,7 @@ def load_model():
 def predict(image, model):
     """Preprocesses the image and predicts the class using the model."""
     try:
-        transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-        ])
+        transform = transforms.Compose([transforms.Resize((224, 224)),transforms.ToTensor(),])
         image = transform(image).unsqueeze(0)  
         outputs = model(image)
         _, predicted_class = torch.max(outputs, 1)  
@@ -173,33 +174,86 @@ def registration_page():
     if st.button("Back to Login"):
         navigate_to("login")
 
-# Classification Page (For Regular Users)
 def classification_page():
+    """
+    Alzheimer's Disease Classification Page.
+    Allows users to upload an image for classification.
+    """
     st.title("Alzheimer's Disease Classification")
     st.write("Upload an image to predict the category of Alzheimer's Disease.")
 
     # File uploader
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-    
-    if uploaded_file is not None:
-        # Display the uploaded image
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Image", use_column_width=True)
 
-        # Load the model
-        model = load_model()
-        if model:
-            # Make prediction
-            st.write("Classifying...")
-            prediction = predict(image, model)
-            if prediction:
-                st.success(f"Prediction: {prediction}")
-        else:
-            st.error("Model could not be loaded. Please try again.")
+    def validate_image(image):
+        """
+        Validates the uploaded image:
+        1. Resizes it to 224x224 for model compatibility.
+        2. Checks brightness threshold to ensure valid MRI image.
+
+        Parameters:
+            image (PIL.Image.Image): The uploaded image.
+
+        Returns:
+            bool: True if the image is valid, False otherwise.
+        """
+        from torchvision import transforms
+
+        try:
+            # Transformation pipeline
+            transform = transforms.Compose([
+                transforms.Resize((224, 224)),  # Resize image to 224x224
+                transforms.Grayscale(num_output_channels=1),  # Convert to grayscale
+                transforms.ToTensor()  # Convert to tensor (normalized [0, 1])
+            ])
+
+            # Apply transformations
+            tensor_image = transform(image)
+            st.write(f"Transformed image shape: {tensor_image.shape}")  # Debug shape
+
+            # Calculate brightness (mean pixel value)
+            mean_brightness = tensor_image.mean().item()  # Mean brightness
+            st.write(f"Mean brightness: {mean_brightness}")  # Debug brightness
+
+            # Brightness threshold check
+            if mean_brightness < 0.05:  # Adjust the threshold if needed
+                st.error("Image is too dark. Please upload a brighter MRI image.")
+                return False
+
+            return True  # Valid image
+        except Exception as e:
+            st.error(f"Error during image validation: {e}")
+            return False
+
+    if uploaded_file is not None:
+        try:
+            # Display the uploaded image
+            image = Image.open(uploaded_file)
+            st.image(image, caption="Uploaded Image", use_column_width=True)
+
+            # Validate the image
+            if not validate_image(image):
+                st.error("Invalid image. Please upload a clear brain MRI image with the appropriate resolution.")
+            else:
+                # Load the model
+                model = load_model()
+                if model:
+                    # Make prediction
+                    st.write("Classifying...")
+                    prediction = predict(image, model)
+                    if prediction:
+                        st.success(f"Prediction: {prediction}")
+                else:
+                    st.error("Model could not be loaded. Please try again.")
+        except Exception as e:
+            st.error(f"An unexpected error occurred: {e}")
 
     # Logout button
     if st.button("Logout"):
         navigate_to("login")
+
+
+
 
 # Admin Page (For Admin Users)
 def admin_page():
