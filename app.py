@@ -161,8 +161,13 @@ def registration_page():
             if new_password != confirm_password:
                 st.error("Passwords do not match. Please try again.")
             elif register_user(new_username, new_password):
-                st.success("Registration successful! Please log in.")
-                navigate_to("login")
+                # Automatically log the user in after registration
+                st.success("Registration successful! Logging you in...")
+                role = authenticate_user(new_username, new_password)
+                if role:
+                    navigate_to("classification" if role == "user" else "admin", role)
+                else:
+                    st.error("Error during login after registration.")
             else:
                 st.error("Username already exists. Please choose a different username.")
 
