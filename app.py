@@ -1,134 +1,153 @@
 import streamlit as st
 import torch
-import torchvision.transforms as transforms  # type: ignore
+import torchvision.transforms as transforms
 from PIL import Image
 from torchvision import models
 import sqlite3
 import hashlib
+import datetime
 import pandas as pd
-from datetime import datetime
 
-# Initialize session state for navigation and user role
+# Initialize session state
 if "current_page" not in st.session_state:
     st.session_state["current_page"] = "login"
 if "user_role" not in st.session_state:
-    st.session_state["user_role"] = None  # "admin" or "user"
+    st.session_state["user_role"] = None
 if "username" not in st.session_state:
     st.session_state["username"] = None
 
-# Navigation function to switch pages
+# Navigation function
+
 def navigate_to(page_name, role=None, username=None):
     st.session_state["current_page"] = page_name
     st.session_state["user_role"] = role
     st.session_state["username"] = username
 
-# Hashing function for passwords
+# Hash password
+
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-# Database Initialization
+# Initialize database
+
 def init_db():
-    """Initialize the SQLite database and create the necessary tables."""
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
     # Users table
-    c.execute(''' 
-        CREATE TABLE IF NOT EXISTS users ( 
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            username TEXT UNIQUE NOT NULL, 
-            hashed_password TEXT NOT NULL, 
-            role TEXT NOT NULL DEFAULT "user" 
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            hashed_password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT "user"
         )
     ''')
 
-    # Login history table
+    # Sessions table
     c.execute('''
-        CREATE TABLE IF NOT EXISTS login_history (
+        CREATE TABLE IF NOT EXISTS sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL,
-            login_time TEXT NOT NULL,
-            FOREIGN KEY (username) REFERENCES users(username)
+            login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            activity TEXT DEFAULT '',
+            is_active BOOLEAN DEFAULT 1
         )
     ''')
 
-    # Admin entry
-    try:
-        admin_username = "HELLFATHER4622"
-        admin_password = "4622"
-        c.execute("SELECT * FROM users WHERE username = ? AND role = 'admin'", (admin_username,))
-        if c.fetchone() is None:  
-            c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)", 
-                      (admin_username, hash_password(admin_password), "admin"))
-    except Exception as e:
-        st.error(f"Error adding admin user: {e}")
+    # Admin user
+    admin_username = "HELLFATHER4622"
+    admin_password = "4622"
+    c.execute("SELECT * FROM users WHERE username = ? AND role = 'admin'", (admin_username,))
+    if not c.fetchone():
+        c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)",
+                  (admin_username, hash_password(admin_password), "admin"))
 
     conn.commit()
     conn.close()
 
-# Database Helper Functions
+# Register user
+
 def register_user(username, password, role="user"):
-    """Register a new user in the database."""
     try:
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
-        c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)", 
+        c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)",
                   (username, hash_password(password), role))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
-        return False  
+        return False
     finally:
         conn.close()
+
+# Authenticate user
 
 def authenticate_user(username, password):
-    """Authenticate a user by checking the database."""
-    try:
-        conn = sqlite3.connect("users.db")
-        c = conn.cursor()
-        c.execute("SELECT hashed_password, role FROM users WHERE username = ?", (username,))
-        result = c.fetchone()
-        if result and result[0] == hash_password(password):
-            # Record login time
-            login_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            c.execute("INSERT INTO login_history (username, login_time) VALUES (?, ?)", (username, login_time))
-            conn.commit()
-            return result[1]  # Return the user's role
-        return None
-    finally:
-        conn.close()
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT hashed_password, role FROM users WHERE username = ?", (username,))
+    result = c.fetchone()
+    conn.close()
+    if result and result[0] == hash_password(password):
+        return result[1]
+    return None
 
-# Load Model (Using Streamlit Cache for Resource Optimization)
+# Track login sessions
+
+def log_login(username):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("INSERT INTO sessions (username, is_active) VALUES (?, 1)", (username,))
+    conn.commit()
+    conn.close()
+
+# Log activity
+
+def log_activity(username, activity):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("UPDATE sessions SET activity = ?, login_time = CURRENT_TIMESTAMP WHERE username = ? AND is_active = 1", (activity, username))
+    conn.commit()
+    conn.close()
+
+# End session
+
+def end_session(username):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("UPDATE sessions SET is_active = 0 WHERE username = ?", (username,))
+    conn.commit()
+    conn.close()
+
+# Load model
 @st.cache_resource
 def load_model():
-    """Loads the trained ResNet18 model."""
     try:
-        model = models.resnet18(pretrained=True)  
-        model.fc = torch.nn.Linear(model.fc.in_features, 4) 
+        model = models.resnet18(pretrained=True)
+        model.fc = torch.nn.Linear(model.fc.in_features, 4)
 
-        # Load state_dict with key adjustments
         state_dict = torch.load("alzheimers_cnn_model.pth", map_location=torch.device('cpu'))
         state_dict = {key.replace("resnet.", "").replace("module.", ""): value for key, value in state_dict.items()}
 
-        # Load into model
         model.load_state_dict(state_dict)
-        model.eval()  
+        model.eval()
         return model
     except FileNotFoundError:
-        st.error("Model file not found. Please ensure 'alzheimers_cnn_model.pth' is in the correct location.")
-        return None
-    except Exception as e:
-        st.error(f"Error loading model: {e}")
+        st.error("Model file not found.")
         return None
 
-# Prediction Function
+# Predict
+
 def predict(image, model):
-    """Preprocesses the image and predicts the class using the model."""
     try:
-        transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(),])
-        image = transform(image).unsqueeze(0)  
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+        ])
+        image = transform(image).unsqueeze(0)
         outputs = model(image)
-        _, predicted_class = torch.max(outputs, 1)  
+        _, predicted_class = torch.max(outputs, 1)
         class_labels = [
             "AD (Alzheimer's Disease)",
             "CN (Cognitively Normal)",
@@ -140,12 +159,11 @@ def predict(image, model):
         st.error(f"Error during prediction: {e}")
         return None
 
-# Login Page
+# Login page
+
 def login_page():
     st.title("Login Page")
-    st.write("Welcome back! Please log in to access the Alzheimer's Disease Classification tool.")
 
-    # Login form
     with st.form("login_form"):
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
@@ -155,21 +173,19 @@ def login_page():
             role = authenticate_user(username, password)
             if role:
                 st.success("Login successful!")
+                log_login(username)
                 navigate_to("classification" if role == "user" else "admin", role, username)
             else:
                 st.error("Invalid username or password.")
 
-    # Link to registration page
-    st.write("New to the site?")
     if st.button("Register Here"):
         navigate_to("register")
 
-# Registration Page
+# Registration page
+
 def registration_page():
     st.title("Registration Page")
-    st.write("Create an account to use the Alzheimer's Disease Classification tool.")
 
-    # Registration form
     with st.form("registration_form"):
         new_username = st.text_input("Choose a Username")
         new_password = st.text_input("Choose a Password", type="password")
@@ -177,93 +193,67 @@ def registration_page():
         submitted = st.form_submit_button("Register")
 
         if submitted:
-            if not new_password:
-                st.error("Password is mandatory. Please enter a password.")
-            elif new_password != confirm_password:
-                st.error("Passwords do not match. Please try again.")
+            if new_password != confirm_password:
+                st.error("Passwords do not match.")
             elif register_user(new_username, new_password):
-                # Automatically log the user in after registration
-                st.success("Registration successful! Logging you in...")
-                role = authenticate_user(new_username, new_password)
-                if role:
-                    navigate_to("classification" if role == "user" else "admin", role, new_username)
-                else:
-                    st.error("Error during login after registration.")
+                st.success("Registration successful! Log in now.")
+                navigate_to("login")
             else:
-                st.error("Username already exists. Please choose a different username.")
+                st.error("Username already exists.")
 
-    # Back to login button
     if st.button("Back to Login"):
         navigate_to("login")
 
-# Classification Page
+# Classification page
+
 def classification_page():
     st.title("Alzheimer's Disease Classification")
-    st.write("Upload an image to predict the category of Alzheimer's Disease.")
+    log_activity(st.session_state["username"], "Accessed classification page")
 
-    # File uploader
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
     if uploaded_file is not None:
         try:
-            # Open and display the uploaded image
             image = Image.open(uploaded_file)
             st.image(image, caption="Uploaded Image", use_column_width=True)
 
-            # Load the model
             model = load_model()
             if model:
-                # Run Prediction
-                st.write("Classifying...")
                 prediction = predict(image, model)
                 if prediction:
                     st.success(f"Prediction: {prediction}")
+                    log_activity(st.session_state["username"], f"Predicted: {prediction}")
             else:
-                st.error("Model could not be loaded. Please try again.")
+                st.error("Model could not be loaded.")
         except Exception as e:
-            st.error(f"An unexpected error occurred: {e}")
+            st.error(f"Error: {e}")
 
-    # Logout button
     if st.button("Logout"):
+        end_session(st.session_state["username"])
         navigate_to("login")
 
-# Admin Page (For Admin Users)
+# Admin page
+
 def admin_page():
     st.title("Admin Panel")
-    st.write("Welcome to the Admin Panel. View and manage user information.")
 
     try:
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
+        c.execute("SELECT username, login_time, activity, is_active FROM sessions")
+        sessions = c.fetchall()
 
-        # Fetch user data
-        c.execute("SELECT id, username, role FROM users")
-        users = c.fetchall()
-
-        # Fetch login history
-        c.execute("SELECT username, login_time FROM login_history ORDER BY login_time DESC")
-        login_history = c.fetchall()
-
-        # Display user data in a table
-        st.subheader("User Information")
-        user_df = pd.DataFrame(users, columns=["ID", "Username", "Role"])
-        st.dataframe(user_df)
-
-        # Display login history in a table
-        st.subheader("Login History")
-        login_df = pd.DataFrame(login_history, columns=["Username", "Login Time"])
-        st.dataframe(login_df)
-
+        df = pd.DataFrame(sessions, columns=["Username", "Login Time", "Activity", "Is Active"])
+        st.dataframe(df)
     except Exception as e:
-        st.error(f"Error fetching data: {e}")
+        st.error(f"Error: {e}")
     finally:
         conn.close()
 
-    # Logout button
     if st.button("Logout"):
         navigate_to("login")
 
-# Page Router
+# Page router
 if st.session_state["current_page"] == "login":
     login_page()
 elif st.session_state["current_page"] == "register":
@@ -275,5 +265,4 @@ elif st.session_state["current_page"] == "admin" and st.session_state["user_role
 else:
     st.error("Access Denied!")
 
-# Initialize the database
 init_db()
