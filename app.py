@@ -1,4 +1,4 @@
-import streamlit as st 
+import streamlit as st
 import torch
 import torchvision.transforms as transforms  # type: ignore
 from PIL import Image
@@ -24,15 +24,15 @@ def hash_password(password):
 
 # Database Initialization
 def init_db():
-    """Initialize the SQLite database and create the users table if it doesn't exist.""" 
+    """Initialize the SQLite database and create the users table if it doesn't exist."""
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute(''' 
-        CREATE TABLE IF NOT EXISTS users ( 
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            username TEXT UNIQUE NOT NULL, 
-            hashed_password TEXT NOT NULL, 
-            role TEXT NOT NULL DEFAULT "user" 
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            hashed_password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT "user"
         )
     ''')
     conn.commit()
@@ -42,8 +42,8 @@ def init_db():
         admin_username = "HELLFATHER4622"
         admin_password = "4622"
         c.execute("SELECT * FROM users WHERE username = ? AND role = 'admin'", (admin_username,))
-        if c.fetchone() is None:  
-            c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)", 
+        if c.fetchone() is None:
+            c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)",
                       (admin_username, hash_password(admin_password), "admin"))
     except Exception as e:
         st.error(f"Error adding admin user: {e}")
@@ -53,21 +53,21 @@ def init_db():
 
 # Database Helper Functions
 def register_user(username, password, role="user"):
-    """Register a new user in the database.""" 
+    """Register a new user in the database."""
     try:
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
-        c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)", 
+        c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)",
                   (username, hash_password(password), role))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
-        return False  
+        return False
     finally:
         conn.close()
 
 def authenticate_user(username, password):
-    """Authenticate a user by checking the database.""" 
+    """Authenticate a user by checking the database."""
     try:
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
@@ -82,10 +82,10 @@ def authenticate_user(username, password):
 # Load Model (Using Streamlit Cache for Resource Optimization)
 @st.cache_resource
 def load_model():
-    """Loads the trained ResNet18 model.""" 
+    """Loads the trained ResNet18 model."""
     try:
-        model = models.resnet18(pretrained=True)  
-        model.fc = torch.nn.Linear(model.fc.in_features, 4) 
+        model = models.resnet18(pretrained=True)
+        model.fc = torch.nn.Linear(model.fc.in_features, 4)
 
         # Load state_dict with key adjustments
         state_dict = torch.load("alzheimers_cnn_model.pth", map_location=torch.device('cpu'))
@@ -93,7 +93,7 @@ def load_model():
 
         # Load into model
         model.load_state_dict(state_dict)
-        model.eval()  
+        model.eval()
         return model
     except FileNotFoundError:
         st.error("Model file not found. Please ensure 'alzheimers_cnn_model.pth' is in the correct location.")
@@ -104,12 +104,12 @@ def load_model():
 
 # Prediction Function
 def predict(image, model):
-    """Preprocesses the image and predicts the class using the model.""" 
+    """Preprocesses the image and predicts the class using the model."""
     try:
-        transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(),])
-        image = transform(image).unsqueeze(0)  
+        transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
+        image = transform(image).unsqueeze(0)
         outputs = model(image)
-        _, predicted_class = torch.max(outputs, 1)  
+        _, predicted_class = torch.max(outputs, 1)
         class_labels = [
             "AD (Alzheimer's Disease)",
             "CN (Cognitively Normal)",
@@ -158,10 +158,14 @@ def registration_page():
         submitted = st.form_submit_button("Register")
 
         if submitted:
-            if new_password != confirm_password:
+            # Validate inputs
+            if not new_username.strip():
+                st.error("Username cannot be empty. Please enter a valid username.")
+            elif not new_password.strip() or not confirm_password.strip():
+                st.error("Password cannot be empty. Please enter a valid password.")
+            elif new_password != confirm_password:
                 st.error("Passwords do not match. Please try again.")
             elif register_user(new_username, new_password):
-                # Automatically log the user in after registration
                 st.success("Registration successful! Logging you in...")
                 role = authenticate_user(new_username, new_password)
                 if role:
