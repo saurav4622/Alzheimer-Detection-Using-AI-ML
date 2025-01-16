@@ -52,14 +52,6 @@ def init_db():
         )
     ''')
 
-    # Admin user
-    admin_username = "HELLFATHER4622"
-    admin_password = "4622"
-    c.execute("SELECT * FROM users WHERE username = ? AND role = 'admin'", (admin_username,))
-    if not c.fetchone():
-        c.execute("INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)",
-                  (admin_username, hash_password(admin_password), "admin"))
-
     conn.commit()
     conn.close()
 
@@ -185,8 +177,9 @@ def registration_page():
             if new_password != confirm_password:
                 st.error("Passwords do not match.")
             elif register_user(new_username, new_password):
-                st.success("Registration successful! Log in now.")
-                navigate_to("login")
+                st.success("Registration successful! Redirecting to classification page.")
+                log_activity(new_username, "Registered successfully")
+                navigate_to("classification", role="user", username=new_username)
             else:
                 st.error("Username already exists.")
 
@@ -231,8 +224,16 @@ def admin_page():
         c.execute("SELECT username, login_time, activity, is_active FROM sessions")
         sessions = c.fetchall()
 
-        df = pd.DataFrame(sessions, columns=["Username", "Login Time", "Activity", "Is Active"])
-        st.dataframe(df)
+        c.execute("SELECT username, role FROM users")
+        users = c.fetchall()
+
+        df_sessions = pd.DataFrame(sessions, columns=["Username", "Login Time", "Activity", "Is Active"])
+        st.subheader("Active Sessions")
+        st.dataframe(df_sessions)
+
+        df_users = pd.DataFrame(users, columns=["Username", "Role"])
+        st.subheader("Registered Users")
+        st.dataframe(df_users)
     except Exception as e:
         st.error(f"Error: {e}")
     finally:
