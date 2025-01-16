@@ -17,19 +17,16 @@ if "username" not in st.session_state:
     st.session_state["username"] = None
 
 # Navigation function
-
 def navigate_to(page_name, role=None, username=None):
     st.session_state["current_page"] = page_name
     st.session_state["user_role"] = role
     st.session_state["username"] = username
 
 # Hash password
-
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 # Initialize database
-
 def init_db():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
@@ -67,7 +64,6 @@ def init_db():
     conn.close()
 
 # Register user
-
 def register_user(username, password, role="user"):
     try:
         conn = sqlite3.connect("users.db")
@@ -82,7 +78,6 @@ def register_user(username, password, role="user"):
         conn.close()
 
 # Authenticate user
-
 def authenticate_user(username, password):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
@@ -94,7 +89,6 @@ def authenticate_user(username, password):
     return None
 
 # Track login sessions
-
 def log_login(username):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
@@ -103,7 +97,6 @@ def log_login(username):
     conn.close()
 
 # Log activity
-
 def log_activity(username, activity):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
@@ -112,7 +105,6 @@ def log_activity(username, activity):
     conn.close()
 
 # End session
-
 def end_session(username):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
@@ -138,7 +130,6 @@ def load_model():
         return None
 
 # Predict
-
 def predict(image, model):
     try:
         transform = transforms.Compose([
@@ -160,7 +151,6 @@ def predict(image, model):
         return None
 
 # Login page
-
 def login_page():
     st.title("Login Page")
 
@@ -182,7 +172,6 @@ def login_page():
         navigate_to("register")
 
 # Registration page
-
 def registration_page():
     st.title("Registration Page")
 
@@ -205,7 +194,6 @@ def registration_page():
         navigate_to("login")
 
 # Classification page
-
 def classification_page():
     st.title("Alzheimer's Disease Classification")
     log_activity(st.session_state["username"], "Accessed classification page")
@@ -215,7 +203,7 @@ def classification_page():
     if uploaded_file is not None:
         try:
             image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
+            st.image(image, caption="Uploaded Image", use_container_width=True)
 
             model = load_model()
             if model:
@@ -230,10 +218,10 @@ def classification_page():
 
     if st.button("Logout"):
         end_session(st.session_state["username"])
+        st.session_state.clear()
         navigate_to("login")
 
 # Admin page
-
 def admin_page():
     st.title("Admin Panel")
 
@@ -251,6 +239,7 @@ def admin_page():
         conn.close()
 
     if st.button("Logout"):
+        st.session_state.clear()
         navigate_to("login")
 
 # Page router
