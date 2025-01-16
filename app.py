@@ -104,6 +104,21 @@ def end_session(username):
     conn.commit()
     conn.close()
 
+# Deregister user
+def deregister_user(username):
+    try:
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("DELETE FROM users WHERE username = ?", (username,))
+        c.execute("DELETE FROM sessions WHERE username = ?", (username,))
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error deregistering user: {e}")
+        return False
+    finally:
+        conn.close()
+
 # Load model
 @st.cache_resource
 def load_model():
@@ -234,6 +249,17 @@ def admin_page():
         df_users = pd.DataFrame(users, columns=["Username", "Role"])
         st.subheader("Registered Users")
         st.dataframe(df_users)
+
+        # Deregister user feature
+        with st.form("deregister_user_form"):
+            username_to_remove = st.text_input("Enter username to deregister")
+            submitted = st.form_submit_button("Deregister User")
+
+            if submitted:
+                if deregister_user(username_to_remove):
+                    st.success(f"User '{username_to_remove}' has been deregistered successfully.")
+                else:
+                    st.error(f"Failed to deregister user '{username_to_remove}'.")
     except Exception as e:
         st.error(f"Error: {e}")
     finally:
