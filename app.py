@@ -84,7 +84,13 @@ def authenticate_user(username, password):
 def log_login(username):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("INSERT INTO sessions (username, is_active) VALUES (?, 1)", (username,))
+    # Check if a session already exists for the user
+    c.execute("SELECT id FROM sessions WHERE username = ? AND is_active = 1", (username,))
+    session_exists = c.fetchone()
+    if session_exists:
+        c.execute("UPDATE sessions SET login_time = CURRENT_TIMESTAMP WHERE id = ?", (session_exists[0],))
+    else:
+        c.execute("INSERT INTO sessions (username, is_active) VALUES (?, 1)", (username,))
     conn.commit()
     conn.close()
 
@@ -92,7 +98,11 @@ def log_login(username):
 def log_activity(username, activity):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("UPDATE sessions SET activity = ?, login_time = CURRENT_TIMESTAMP WHERE username = ? AND is_active = 1", (activity, username))
+    c.execute("""
+        UPDATE sessions 
+        SET activity = ?, login_time = CURRENT_TIMESTAMP 
+        WHERE username = ? AND is_active = 1
+    """, (activity, username))
     conn.commit()
     conn.close()
 
@@ -236,12 +246,21 @@ def admin_page():
     try:
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
-        c.execute("SELECT username, login_time, activity, is_active FROM sessions")
+
+        # Fetch active sessions
+        c.execute("""
+            SELECT username, login_time, activity, is_active 
+            FROM sessions 
+            WHERE is_active = 1 
+            ORDER BY login_time DESC
+        """)
         sessions = c.fetchall()
 
+        # Fetch all registered users
         c.execute("SELECT username, role FROM users")
         users = c.fetchall()
 
+        # Display sessions and users
         df_sessions = pd.DataFrame(sessions, columns=["Username", "Login Time", "Activity", "Is Active"])
         st.subheader("Active Sessions")
         st.dataframe(df_sessions)
@@ -250,7 +269,7 @@ def admin_page():
         st.subheader("Registered Users")
         st.dataframe(df_users)
 
-        # Deregister user feature
+        # Deregistration feature
         with st.form("deregister_user_form"):
             username_to_remove = st.text_input("Enter username to deregister")
             submitted = st.form_submit_button("Deregister User")
